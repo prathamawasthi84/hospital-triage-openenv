@@ -146,7 +146,9 @@ class TriageEnv:
     # ──────────────────────────────────────
 
     def _grade_action(self, action: Action,
+
                     patient: Patient) -> Reward:
+
         if self.task_level == TaskLevel.EASY:
             return self._grade_easy(action, patient)
         elif self.task_level == TaskLevel.MEDIUM:
@@ -210,7 +212,10 @@ class TriageEnv:
         )
 
     def _grade_medium(self, action: Action,
+
                     patient: Patient) -> Reward:
+
+
         ground_truth = self._get_ground_truth(patient.id)
         breakdown = RewardBreakdown()
         feedback_parts = []
