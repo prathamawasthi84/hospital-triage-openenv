@@ -9,21 +9,13 @@ from models import Action, TaskLevel
 
 # APP SETUP
 
-
 app = FastAPI(
     title="Hospital Triage OpenEnv",
-    description="""
-    A real-world hospital emergency triage environment
-    where an AI agent learns to prioritize patients
-    under dynamic conditions and limited resources.
-    
-    Built for Meta x Scaler OpenEnv Hackathon.
-    """,
+    description="Hospital emergency triage environment for Meta x Scaler OpenEnv Hackathon.",
     version="1.0.0",
     docs_url="/docs",
 )
 
-# allow all origins — needed for HF Space
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,12 +23,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# single global env instance
-env = TriageEnv()
+# ✅ FIX: use a mutable container so /step always sees the latest env
+env_container = {"env": TriageEnv()}
+
+def get_env() -> TriageEnv:
+    return env_container["env"]
 
 # REQUEST MODELS
-# what the API expects to receive
-
 
 class ResetRequest(BaseModel):
     task_level: Optional[str] = "easy"
@@ -52,11 +45,6 @@ class StepRequest(BaseModel):
 
 @app.get("/")
 def root():
-    """
-    Health check endpoint.
-    HF Space pings this to verify server is alive.
-    Must return 200.
-    """
     return {
         "status": "ok",
         "environment": "hospital-triage-openenv",
@@ -66,15 +54,7 @@ def root():
 
 @app.post("/reset")
 def reset(request: ResetRequest = ResetRequest()):
-    """
-    Start a new episode.
-    Returns first Observation.
-    
-    Args:
-        task_level: easy / medium / hard
-    """
     try:
-        # validate task level
         valid_levels = ["easy", "medium", "hard"]
         if request.task_level not in valid_levels:
             raise HTTPException(
@@ -82,7 +62,9 @@ def reset(request: ResetRequest = ResetRequest()):
                 detail=f"task_level must be one of {valid_levels}"
             )
 
-        observation = env.reset(request.task_level)
+        # ✅ FIX: create a brand new TriageEnv instance
+        env_container["env"] = TriageEnv()
+        observation = env_container["env"].reset(request.task_level)
 
         return {
             "status": "ok",
@@ -90,6 +72,8 @@ def reset(request: ResetRequest = ResetRequest()):
             "observation": observation.dict(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -98,19 +82,9 @@ def reset(request: ResetRequest = ResetRequest()):
 
 @app.post("/step")
 def step(request: StepRequest):
-    """
-    Submit agent action and get next observation.
-    Returns observation + reward + done + info.
-    
-    Args:
-        patient_id: ID of patient being triaged
-        priority:   immediate/urgent/non_urgent/deceased
-        ward:       ICU/emergency/general/waiting
-        treatment:  cardiac_protocol/trauma_protocol/
-                    respiratory_protocol/basic_care/observe_only
-        reasoning:  optional agent reasoning text
-    """
     try:
+        env = get_env()
+
         if env.done:
             raise HTTPException(
                 status_code=400,
@@ -150,13 +124,8 @@ def step(request: StepRequest):
 
 @app.get("/state")
 def state():
-    """
-    Get full current environment state.
-    Can be called anytime during episode.
-    Returns complete snapshot of env.
-    """
     try:
-        current_state = env.state()
+        current_state = get_env().state()
         return {
             "status": "ok",
             "state": current_state.dict(),
@@ -166,8 +135,6 @@ def state():
             status_code=500,
             detail=f"State failed: {str(e)}"
         )
-
-# RUN SERVER
 
 if __name__ == "__main__":
     uvicorn.run(

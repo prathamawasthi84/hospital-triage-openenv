@@ -100,9 +100,9 @@ class TriageEnv:
             patient.assigned_ward = action.ward
             self._consume_resources(action.ward)
             self.patients_treated += 1
-            if self.task_level == TaskLevel.EASY:
-                self.queue = [p for p in self.queue
-                            if p.id != action.patient_id]
+            # ✅ FIX: Remove treated patient for ALL task levels
+            self.queue = [p for p in self.queue
+                          if p.id != action.patient_id]
 
         self.step_count += 1
         self.total_reward += reward.total
@@ -146,9 +146,7 @@ class TriageEnv:
     # ──────────────────────────────────────
 
     def _grade_action(self, action: Action,
-
-                    patient: Patient) -> Reward:
-
+                      patient: Patient) -> Reward:
         if self.task_level == TaskLevel.EASY:
             return self._grade_easy(action, patient)
         elif self.task_level == TaskLevel.MEDIUM:
@@ -212,10 +210,7 @@ class TriageEnv:
         )
 
     def _grade_medium(self, action: Action,
-
-                    patient: Patient) -> Reward:
-
-
+                      patient: Patient) -> Reward:
         ground_truth = self._get_ground_truth(patient.id)
         breakdown = RewardBreakdown()
         feedback_parts = []
