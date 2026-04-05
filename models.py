@@ -1,54 +1,64 @@
-from dataclasses import Field
-
-from pydantic import BaseModel, field
-from typing import list,Optional,Dict,Any
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
 from enum import Enum
 
-class Priority(str,Enum):
-    IMMEDIATE = 'immediate' #life-threatening
-    URGENT='urgent' #serious but stable
-    NON_URGENT='non_urgent' #not serious
-    DECEASED='deceased' #deceased patient, mrtak
-    
-class Ward(str,Enum):
-    ICU="icu" #intensive or deep care
-    GENERAL='general' #general care
-    EMERGENCY='emergency' #emergency room
-    WAITING='waiting' #waiting area
+# ──────────────────────────────────────────
+# ENUMS — fixed allowed values
+# ──────────────────────────────────────────
 
-class Treatment(str,Enum):
-    CARDIAC ="cardiac_protocol"
-    TRAUMA = 'trauma_protocol'
+class Priority(str, Enum):
+    IMMEDIATE   = "immediate"    # life threatening
+    URGENT      = "urgent"       # serious but stable
+    NON_URGENT  = "non_urgent"   # minor issues
+    DECEASED    = "deceased"     # no intervention
+
+class Ward(str, Enum):
+    ICU         = "ICU"          # intensive care
+    GENERAL     = "general"      # general ward
+    EMERGENCY   = "emergency"    # emergency room
+    WAITING     = "waiting"      # waiting area
+
+class Treatment(str, Enum):
+    CARDIAC     = "cardiac_protocol"
+    TRAUMA      = "trauma_protocol"
     RESPIRATORY = "respiratory_protocol"
-    BASIC ="basic_protocol"
-    OBSERVE="observe_protocol"
+    BASIC       = "basic_care"
+    OBSERVE     = "observe_only"
 
-class Severity(str,Enum):
-    CRITICAL="critical" #immediate risk of death
-    SERIOUS='serious'# serious  urgent attention needed
-    MODERATE='moderate'#needs care, stable
-    MINOR='minor' #not urgent
-    
-class TaskLevel(str,Enum):
-    EASY="easy"
-    MEDIUM='medium'
-    HARD='hard'
-#patient model
+class Severity(str, Enum):
+    CRITICAL    = "critical"     # immediate risk of death
+    SERIOUS     = "serious"      # urgent attention needed
+    MODERATE    = "moderate"     # needs care, stable
+    MINOR       = "minor"        # non-urgent
+
+class TaskLevel(str, Enum):
+    EASY        = "easy"
+    MEDIUM      = "medium"
+    HARD        = "hard"
+
+# ──────────────────────────────────────────
+# PATIENT — core data unit
+# ──────────────────────────────────────────
+
 class Patient(BaseModel):
-    id:str=field(...,description="Unique patient ID e.g.P001")  
-    age:int=field(...,ge=0,le=120)
-    blood_pressure:str=field(...,description='blood pressure reading e.g.120/180')
-    heart_rate:int=field(...,ge=0,le=300)
-    oxygen_saturation:float=field(...,ge=0.0,le=100.0)
+    id: str = Field(..., description="Unique patient ID e.g. P001")
+    age: int = Field(..., ge=0, le=120)
+    blood_pressure: str = Field(..., description="e.g. 180/110")
+    heart_rate: int = Field(..., ge=0, le=300)
+    oxygen_saturation: float = Field(..., ge=0.0, le=100.0)
     symptoms: List[str] = Field(..., description="List of reported symptoms")
     severity: Optional[Severity] = Field(None, description="Ground truth severity — hidden from agent")
     wait_time: int = Field(default=0, description="Minutes patient has been waiting")
     deteriorating: bool = Field(default=False, description="Is patient getting worse each step")
     assigned_ward: Optional[Ward] = Field(None, description="Ward assigned by agent")
     assigned_priority: Optional[Priority] = Field(None, description="Priority assigned by agent")
-    
 
-## OBSERVATION — what agent sees  
+    class Config:
+        use_enum_values = True
+
+# ──────────────────────────────────────────
+# OBSERVATION — what agent sees
+# ──────────────────────────────────────────
 
 class Resources(BaseModel):
     ICU_beds: int = Field(..., ge=0)
@@ -69,7 +79,9 @@ class Observation(BaseModel):
     class Config:
         use_enum_values = True
 
+# ──────────────────────────────────────────
 # ACTION — what agent decides
+# ──────────────────────────────────────────
 
 class Action(BaseModel):
     patient_id: str = Field(..., description="ID of patient being triaged")
@@ -80,8 +92,10 @@ class Action(BaseModel):
 
     class Config:
         use_enum_values = True
-    
+
+# ──────────────────────────────────────────
 # REWARD — score breakdown
+# ──────────────────────────────────────────
 
 class RewardBreakdown(BaseModel):
     priority_score: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -95,8 +109,9 @@ class Reward(BaseModel):
     breakdown: RewardBreakdown = Field(..., description="Per-component score breakdown")
     feedback: str = Field(default="", description="Human readable feedback for agent")
 
+# ──────────────────────────────────────────
 # ENV STATE — full environment snapshot
-
+# ──────────────────────────────────────────
 
 class EnvState(BaseModel):
     queue: List[Patient] = Field(default=[], description="All patients in the system")
@@ -113,7 +128,10 @@ class EnvState(BaseModel):
     class Config:
         use_enum_values = True
 
+# ──────────────────────────────────────────
 # STEP RESPONSE — what env.step() returns
+# ──────────────────────────────────────────
+
 class StepResponse(BaseModel):
     observation: Observation
     reward: Reward

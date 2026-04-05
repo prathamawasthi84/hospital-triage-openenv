@@ -22,18 +22,13 @@ class TriageEnv:
         self.patients_treated: int = 0
         self.patients_deteriorated: int = 0
         self.patients_deceased: int = 0
-        self._patient_index: int = 0  # for easy task cycling
+        self._patient_index: int = 0
 
     # ──────────────────────────────────────
-    # RESET — start a fresh episode
+    # RESET
     # ──────────────────────────────────────
 
     def reset(self, task_level: str = "easy") -> Observation:
-        """
-        Resets environment and returns first observation.
-        Called at start of every episode.
-        """
-        # reset all internal state
         self.step_count = 0
         self.total_reward = 0.0
         self.done = False
@@ -42,41 +37,25 @@ class TriageEnv:
         self.patients_deceased = 0
         self._patient_index = 0
         self.task_level = TaskLevel(task_level)
-
-        # load task scenario from tasks.py
         self.task_data = get_task(self.task_level)
-
-        # build patient queue based on task level
         self._build_queue()
-
-        # set resources based on task level
         self._set_resources()
-
-        # set max steps based on difficulty
         self.max_steps = {
             TaskLevel.EASY:   10,
             TaskLevel.MEDIUM: 15,
             TaskLevel.HARD:   20,
         }[self.task_level]
-
         return self._get_observation()
 
     def _build_queue(self):
-        """Build patient queue from task data"""
         self.queue = []
-        if self.task_level == TaskLevel.EASY:
-            for p_data in self.task_data["patients"]:
-                self.queue.append(self._dict_to_patient(p_data))
-        elif self.task_level in [TaskLevel.MEDIUM, TaskLevel.HARD]:
-            for p_data in self.task_data["patients"]:
-                self.queue.append(self._dict_to_patient(p_data))
+        for p_data in self.task_data["patients"]:
+            self.queue.append(self._dict_to_patient(p_data))
 
     def _set_resources(self):
-        """Set resources from task data"""
         if "resources" in self.task_data:
             r = self.task_data["resources"]
         else:
-            # default resources for easy task
             r = {
                 "ICU_beds": 5,
                 "general_beds": 10,
@@ -87,7 +66,6 @@ class TriageEnv:
         self.resources = Resources(**r)
 
     def _dict_to_patient(self, p_data: Dict) -> Patient:
-        """Convert raw dict from tasks.py to Patient model"""
         return Patient(
             id=p_data["id"],
             age=p_data["age"],
@@ -101,58 +79,35 @@ class TriageEnv:
         )
 
     # ──────────────────────────────────────
-    # STEP — process one agent action
+    # STEP
     # ──────────────────────────────────────
 
     def step(self, action: Action) -> StepResponse:
-        """
-        Process agent action and return next observation,
-        reward, done flag and info dict.
-        """
         if self.done:
-            raise ValueError("Episode is done. Call reset() first.")
+            raise ValueError("Episode done. Call reset() first.")
 
-        # find patient agent is acting on
         patient = self._find_patient(action.patient_id)
 
         if patient is None:
-            # penalise agent for invalid patient ID
             reward = Reward(
                 total=0.0,
                 breakdown=RewardBreakdown(),
-                feedback="Invalid patient ID provided."
+                feedback="Invalid patient ID."
             )
         else:
-            # grade action using rubrics
             reward = self._grade_action(action, patient)
-
-            # update patient status
             patient.assigned_priority = action.priority
             patient.assigned_ward = action.ward
-
-            # consume resources
             self._consume_resources(action.ward)
-
-            # mark patient as treated
             self.patients_treated += 1
-
-            # remove treated patient from queue
-            # for easy task — move to next patient
             if self.task_level == TaskLevel.EASY:
                 self.queue = [p for p in self.queue
-                            if p.id != action.patient_id]
+                              if p.id != action.patient_id]
 
-        # increment step
         self.step_count += 1
         self.total_reward += reward.total
-
-        # apply deterioration every 3 steps
         self._apply_deterioration()
-
-        # increase wait time for remaining patients
         self._update_wait_times()
-
-        # check if episode is done
         self.done = self._check_done()
 
         return StepResponse(
@@ -169,14 +124,10 @@ class TriageEnv:
         )
 
     # ──────────────────────────────────────
-    # STATE — return full env snapshot
+    # STATE
     # ──────────────────────────────────────
 
     def state(self) -> EnvState:
-        """
-        Returns complete environment state.
-        Can be called anytime during episode.
-        """
         return EnvState(
             queue=self.queue,
             resources=self.resources,
@@ -191,13 +142,11 @@ class TriageEnv:
         )
 
     # ──────────────────────────────────────
-    # GRADING — score the agent's action
+    # GRADING
     # ──────────────────────────────────────
 
     def _grade_action(self, action: Action,
-                    patient: Patient) -> Reward:
-        """Grade action against ground truth from tasks.py"""
-
+                      patient: Patient) -> Reward:
         if self.task_level == TaskLevel.EASY:
             return self._grade_easy(action, patient)
         elif self.task_level == TaskLevel.MEDIUM:
@@ -207,15 +156,11 @@ class TriageEnv:
 
     def _grade_easy(self, action: Action,
                     patient: Patient) -> Reward:
-        """Easy grader — priority + ward + treatment"""
-
-        # find ground truth from task data
         ground_truth = self._get_ground_truth(patient.id)
-
         breakdown = RewardBreakdown()
         feedback_parts = []
 
-        # priority score (40%)
+        # priority (40%)
         if action.priority == ground_truth.get("correct_priority"):
             breakdown.priority_score = 0.40
             feedback_parts.append("Priority correct ✓")
@@ -225,12 +170,11 @@ class TriageEnv:
                 f"Priority wrong — expected "
                 f"{ground_truth.get('correct_priority')}"
             )
-            # heavy penalty for missing critical patient
             if ground_truth.get("severity") == Severity.CRITICAL:
                 breakdown.deterioration_penalty = -0.30
                 feedback_parts.append("Critical patient missed! -0.30")
 
-        # ward score (30%)
+        # ward (30%)
         if action.ward == ground_truth.get("correct_ward"):
             breakdown.ward_score = 0.30
             feedback_parts.append("Ward correct ✓")
@@ -241,7 +185,7 @@ class TriageEnv:
                 f"{ground_truth.get('correct_ward')}"
             )
 
-        # treatment score (30%)
+        # treatment (30%)
         if action.treatment == ground_truth.get("correct_treatment"):
             breakdown.treatment_score = 0.30
             feedback_parts.append("Treatment correct ✓")
@@ -252,7 +196,6 @@ class TriageEnv:
                 f"{ground_truth.get('correct_treatment')}"
             )
 
-        # calculate total — clamp to 0.0–1.0
         total = max(0.0, min(1.0,
             breakdown.priority_score +
             breakdown.ward_score +
@@ -267,14 +210,12 @@ class TriageEnv:
         )
 
     def _grade_medium(self, action: Action,
-                    patient: Patient) -> Reward:
-        """Medium grader — survival + resources + wait time"""
-
+                      patient: Patient) -> Reward:
         ground_truth = self._get_ground_truth(patient.id)
         breakdown = RewardBreakdown()
         feedback_parts = []
 
-        # priority correct? (40%)
+        # priority (40%)
         if action.priority == ground_truth.get("correct_priority"):
             breakdown.priority_score = 0.40
             feedback_parts.append("Priority correct ✓")
@@ -282,12 +223,11 @@ class TriageEnv:
             breakdown.priority_score = 0.0
             feedback_parts.append("Priority wrong ✗")
 
-        # resource efficiency — did agent use ICU wisely? (30%)
+        # resource efficiency (30%)
         if action.ward == ground_truth.get("correct_ward"):
             breakdown.ward_score = 0.30
             feedback_parts.append("Ward correct ✓")
         else:
-            # penalise wasting ICU on non-critical
             if (action.ward == Ward.ICU and
                 ground_truth.get("severity") != Severity.CRITICAL):
                 breakdown.ward_score = -0.10
@@ -296,7 +236,7 @@ class TriageEnv:
                 breakdown.ward_score = 0.0
                 feedback_parts.append("Ward wrong ✗")
 
-        # wait time score (20%)
+        # wait time (20%)
         if patient.wait_time < 5:
             breakdown.treatment_score = 0.20
             feedback_parts.append("Treated promptly ✓")
@@ -311,7 +251,7 @@ class TriageEnv:
         # deterioration penalty
         if patient.deteriorating:
             breakdown.deterioration_penalty -= 0.10
-            feedback_parts.append("Patient was deteriorating! -0.10")
+            feedback_parts.append("Patient deteriorating! -0.10")
 
         total = max(0.0, min(1.0,
             breakdown.priority_score +
@@ -329,23 +269,19 @@ class TriageEnv:
 
     def _grade_hard(self, action: Action,
                     patient: Patient) -> Reward:
-        """Hard grader — START triage tagging accuracy"""
-
         ground_truth = self._get_ground_truth(patient.id)
         breakdown = RewardBreakdown()
         feedback_parts = []
 
-        # tagging accuracy (35%)
+        # START triage tag (35%)
         correct_tag = ground_truth.get("correct_tag")
-        action_tag = action.priority
-
         tag_map = {
             Priority.IMMEDIATE:  "red",
             Priority.URGENT:     "yellow",
             Priority.NON_URGENT: "green",
             Priority.DECEASED:   "black",
         }
-        agent_tag = tag_map.get(action_tag, "green")
+        agent_tag = tag_map.get(action.priority, "green")
 
         if agent_tag == correct_tag:
             breakdown.priority_score = 0.35
@@ -356,18 +292,20 @@ class TriageEnv:
                 f"Tag wrong — expected {correct_tag}, "
                 f"got {agent_tag} ✗"
             )
-            # critical mistake — tagged black when saveable
             if correct_tag == "red" and agent_tag == "black":
                 breakdown.deterioration_penalty = -0.20
-                feedback_parts.append("Fatal error: gave up on saveable patient! -0.20")
+                feedback_parts.append(
+                    "Fatal: gave up on saveable patient! -0.20"
+                )
 
-        # reasoning quality (40%) — keyword matching
+        # reasoning quality (40%)
         reasoning = (action.reasoning or "").lower()
         key_symptoms = [s.lower() for s in patient.symptoms]
         keywords_used = sum(
             1 for kw in key_symptoms if kw in reasoning
         )
-        reasoning_score = min(0.40,
+        reasoning_score = min(
+            0.40,
             (keywords_used / max(len(key_symptoms), 1)) * 0.40
         )
         breakdown.ward_score = round(reasoning_score, 3)
@@ -376,7 +314,7 @@ class TriageEnv:
         )
 
         # resource optimality (20%)
-        if action.ward == ground_truth.get("correct_ward",Ward.WAITING):
+        if action.ward == ground_truth.get("correct_ward", Ward.WAITING):
             breakdown.treatment_score = 0.20
             feedback_parts.append("Resource use optimal ✓")
         else:
@@ -397,22 +335,17 @@ class TriageEnv:
         )
 
     # ──────────────────────────────────────
-    # HELPER METHODS
+    # HELPERS
     # ──────────────────────────────────────
 
     def _get_observation(self) -> Observation:
-        """Build observation from current state"""
-        # current patient = first in queue
         current = self.queue[0] if self.queue else None
-
-        # hide severity from agent
         if current:
             visible = current.copy()
             visible.severity = None
         else:
             visible = None
 
-        # hide severity from queue too
         visible_queue = []
         for p in self.queue[1:]:
             vp = p.copy()
@@ -430,11 +363,10 @@ class TriageEnv:
         )
 
     def _get_context_message(self) -> str:
-        """Provide context to agent"""
         if self.task_level == TaskLevel.EASY:
             return "Triage this patient. Assign priority, ward and treatment."
         elif self.task_level == TaskLevel.MEDIUM:
-            return (f"Manage the ER queue. "
+            return (f"Manage ER queue. "
                     f"{len(self.queue)} patients waiting. "
                     f"ICU beds: {self.resources.ICU_beds}.")
         elif self.task_level == TaskLevel.HARD:
@@ -446,24 +378,19 @@ class TriageEnv:
                     f"Resources critically low.")
         return ""
 
-    def _find_patient(self,
-                    patient_id: str) -> Optional[Patient]:
-        """Find patient by ID in queue"""
+    def _find_patient(self, patient_id: str) -> Optional[Patient]:
         for p in self.queue:
             if p.id == patient_id:
                 return p
         return None
 
     def _get_ground_truth(self, patient_id: str) -> Dict:
-        """Get correct answer for a patient from task data"""
-        patients = self.task_data.get("patients", [])
-        for p in patients:
+        for p in self.task_data.get("patients", []):
             if p["id"] == patient_id:
                 return p
         return {}
 
     def _consume_resources(self, ward: Ward):
-        """Reduce resource count when patient assigned"""
         if ward == Ward.ICU:
             self.resources.ICU_beds = max(
                 0, self.resources.ICU_beds - 1
@@ -477,3 +404,22 @@ class TriageEnv:
         """Every 3 steps — critical patients deteriorate"""
         if self.step_count % 3 == 0:
             for patient in self.queue:
+                if patient.severity == Severity.CRITICAL:
+                    patient.deteriorating = True
+                    patient.heart_rate = min(
+                        300, patient.heart_rate + 10
+                    )
+                    patient.oxygen_saturation = max(
+                        0, patient.oxygen_saturation - 2.0
+                    )
+                    self.patients_deteriorated += 1
+
+    def _update_wait_times(self):
+        for patient in self.queue:
+            patient.wait_time += 1
+
+    def _check_done(self) -> bool:
+        return (
+            self.step_count >= self.max_steps or
+            len(self.queue) == 0
+        )
