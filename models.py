@@ -1,7 +1,7 @@
 from dataclasses import Field
 
-from pydantic import BaseModel, field
-from typing import list,Optional,Dict,Any
+from pydantic import BaseModel, Field
+from typing import List,Optional,Dict,Any
 from enum import Enum
 
 class Priority(str,Enum):
