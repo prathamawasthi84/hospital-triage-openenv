@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "hospital-triage-openenv"
+version = "1.0.0"
+description = "Hospital Emergency Triage OpenEnv for Meta x Scaler Hackathon"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "requests",
+    "openai",
+    "openenv-core>=0.2.0",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.openenv]
+name = "hospital-triage-openenv"
+version = "1.0.0"
+entry_point = "server.app:main"
+port = 8004
+tasks = ["easy", "medium", "hard"]
