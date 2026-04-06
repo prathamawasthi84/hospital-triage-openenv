@@ -206,11 +206,46 @@ curl http://localhost:8004/state
 ---
 
 ## 🤖 Run Baseline Inference
-```bash
-export API_BASE_URL=https://api.openai.com/v1
-export MODEL_NAME=gpt-4o-mini
-export HF_TOKEN=your_hf_token
 
+### Step 1 — Set Environment Variables
+
+**Windows CMD:**
+```cmd
+set API_BASE_URL=https://router.huggingface.co/v1
+set MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
+set HF_TOKEN=your_hf_token_here
+set ENV_URL=http://localhost:8004
+set OPENAI_API_KEY=your_hf_token_here
+```
+
+**Windows PowerShell:**
+```powershell
+$env:API_BASE_URL="https://router.huggingface.co/v1"
+$env:MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
+$env:HF_TOKEN="your_hf_token_here"
+$env:ENV_URL="http://localhost:8004"
+$env:OPENAI_API_KEY="your_hf_token_here"
+```
+
+**Linux/Mac:**
+```bash
+export API_BASE_URL=https://router.huggingface.co/v1
+export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
+export HF_TOKEN=your_hf_token_here
+export ENV_URL=http://localhost:8004
+export OPENAI_API_KEY=your_hf_token_here
+```
+
+> ⚠️ HF_TOKEN requires "Make calls to Inference Providers"
+> permission enabled at huggingface.co → Settings → Access Tokens
+
+### Step 2 — Start The Server
+```cmd
+python server.py
+```
+
+### Step 3 — Run Inference (new terminal)
+```cmd
 python inference.py
 ```
 
@@ -218,19 +253,19 @@ python inference.py
 
 ## 📈 Baseline Scores
 
-Scores produced by GPT-4o-mini baseline agent:
+Scores produced by **Qwen/Qwen2.5-72B-Instruct** via HuggingFace Router:
 
 | Task | Score |
 |---|---|
-| Easy | TBD |
-| Medium | TBD |
-| Hard | TBD |
-
-*(Updated after baseline run on Day 3)*
+| Easy | 0.910 |
+| Medium | 0.700 |
+| Hard | 0.691 |
+| **Average** | **0.767** |
 
 ---
 
 ## 📁 Project Structure
+```
 hospital-triage-openenv/
 ├── env.py           # Core environment
 ├── models.py        # Pydantic typed models
@@ -241,6 +276,7 @@ hospital-triage-openenv/
 ├── openenv.yaml     # Environment config
 ├── Dockerfile       # Container setup
 └── README.md        # This file
+```
 
 ---
 
@@ -251,6 +287,8 @@ hospital-triage-openenv/
 | API_BASE_URL | LLM API endpoint |
 | MODEL_NAME | Model identifier |
 | HF_TOKEN | HuggingFace API token |
+| ENV_URL | Environment server URL |
+| OPENAI_API_KEY | Same value as HF_TOKEN |
 
 ---
 
