@@ -31,7 +31,6 @@ def log_step(step: int, action: str, reward: float,
              done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
     done_val  = str(done).lower()
-    # sanitize action — no newlines allowed on one line
     action_clean = action.replace("\n", " ").replace("\r", "")
     print(
         f"[STEP] step={step} action={action_clean} "
@@ -101,7 +100,7 @@ SYSTEM_PROMPT = textwrap.dedent("""
         "priority": "<immediate|urgent|non_urgent|deceased>",
         "ward": "<ICU|emergency|general|waiting>",
         "treatment": "<cardiac_protocol|trauma_protocol|respiratory_protocol|basic_care|observe_only>",
-        "reasoning": "<brief explanation of your decision>"
+        "reasoning": "<brief explanation mentioning patient symptoms>"
     }
     
     Priority guide:
@@ -116,6 +115,15 @@ SYSTEM_PROMPT = textwrap.dedent("""
     - general: stable patients needing standard care
     - waiting: minor patients who can wait
     
+    Treatment guide:
+    - cardiac_protocol: chest pain, heart attack, arrhythmia
+    - trauma_protocol: injuries, bleeding, fractures
+    - respiratory_protocol: breathing problems, low oxygen
+    - basic_care: general treatment, monitoring
+    - observe_only: deceased or very minor cases
+    
+    IMPORTANT: Always use the EXACT patient_id from the observation.
+    Always include ALL fields: patient_id, priority, ward, treatment, reasoning.
     Always respond with valid JSON only. No extra text.
 """).strip()
 
@@ -135,7 +143,6 @@ def get_triage_decision(
     resources = observation.get("resources", {})
     queue_size = len(observation.get("queue", []))
 
-    # build user prompt from observation
     user_prompt = textwrap.dedent(f"""
         Step {step} — Triage Decision Required
 
@@ -162,7 +169,7 @@ def get_triage_decision(
         Recent history:
         {chr(10).join(history[-3:]) if history else 'None'}
 
-        Respond with JSON triage decision.
+        Respond with JSON triage decision. Use EXACT patient ID: {patient.get('id', 'unknown')}
     """).strip()
 
     try:
@@ -186,25 +193,32 @@ def get_triage_decision(
         text = text.strip()
 
         decision = json.loads(text)
+
+        # ✅ FIX: ensure all required fields exist with safe defaults
+        decision["patient_id"] = patient.get("id", decision.get("patient_id", "unknown"))
+        decision.setdefault("priority",  "urgent")
+        decision.setdefault("ward",      "emergency")
+        decision.setdefault("treatment", "basic_care")
+        decision.setdefault("reasoning", "LLM decision")
+
         return decision
 
     except json.JSONDecodeError:
-        # fallback safe decision if JSON parsing fails
         return {
             "patient_id": patient.get("id", "unknown"),
-            "priority": "urgent",
-            "ward": "emergency",
-            "treatment": "basic_care",
-            "reasoning": "Fallback decision due to parsing error"
+            "priority":   "urgent",
+            "ward":       "emergency",
+            "treatment":  "basic_care",
+            "reasoning":  "Fallback decision due to parsing error"
         }
     except Exception as exc:
         print(f"[DEBUG] LLM request failed: {exc}", flush=True)
         return {
             "patient_id": patient.get("id", "unknown"),
-            "priority": "urgent",
-            "ward": "emergency",
-            "treatment": "basic_care",
-            "reasoning": "Fallback decision due to API error"
+            "priority":   "urgent",
+            "ward":       "emergency",
+            "treatment":  "basic_care",
+            "reasoning":  "Fallback decision due to API error"
         }
 
 # ──────────────────────────────────────────
@@ -233,6 +247,11 @@ def run_task(client: OpenAI, task_level: str) -> float:
         reset_result = env_reset(task_level)
         observation  = reset_result.get("observation", {})
 
+        # ✅ FIX: safety check — verify reset worked
+        if not observation:
+            print(f"[DEBUG] Reset returned empty observation for {task_level}", flush=True)
+            return 0.0
+
         for step in range(1, MAX_STEPS + 1):
 
             # check if episode already done
@@ -256,7 +275,6 @@ def run_task(client: OpenAI, task_level: str) -> float:
             done = False
 
             try:
-                # call env step
                 step_result = env_step(decision)
                 reward      = step_result.get(
                     "reward", {}
@@ -264,7 +282,6 @@ def run_task(client: OpenAI, task_level: str) -> float:
                 done        = step_result.get("done", False)
                 observation = step_result.get("observation", {})
 
-                # update history
                 history.append(
                     f"Step {step}: {action_str} "
                     f"-> reward {reward:+.2f}"
@@ -277,7 +294,6 @@ def run_task(client: OpenAI, task_level: str) -> float:
             rewards.append(reward)
             steps_taken = step
 
-            # log step immediately after env.step()
             log_step(
                 step=step,
                 action=action_str,
@@ -296,7 +312,6 @@ def run_task(client: OpenAI, task_level: str) -> float:
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
-        # always log end — even if exception occurred
         log_end(
             success=success,
             steps=steps_taken,
@@ -331,7 +346,6 @@ def main() -> None:
         print(f"[DEBUG] {task_level} score: {score:.3f}",
               flush=True)
 
-    # print summary
     print("\n[DEBUG] ── FINAL SCORES ──", flush=True)
     for level, score in all_scores.items():
         print(f"[DEBUG] {level}: {score:.3f}", flush=True)
