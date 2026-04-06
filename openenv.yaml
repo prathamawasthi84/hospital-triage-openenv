@@ -263,8 +263,8 @@ endpoints:
 
 baseline:
   script: inference.py
-  model: gpt-4o-mini
+  model: Qwen/Qwen2.5-72B-Instruct
   scores:
-    easy: TBD
-    medium: TBD
-    hard: TBD
+    easy: 0.910
+    medium: 0.700
+    hard: 0.691
