@@ -4,7 +4,7 @@ client.py — HTTP client for the Hospital Triage OpenEnv.
 Allows users to interact with the environment programmatically
 after installing the package from the HF Space:
 
-    pip install git+https://huggingface.co/spaces/prathamawasthi84/hospital-triage-openenv
+    pip install git+https://huggingface.co/spaces/pratham45/hospital-triage-openenv
 
 Usage:
     from client import TriageEnvClient
